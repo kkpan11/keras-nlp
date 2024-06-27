@@ -20,15 +20,15 @@ except ImportError:
         "To use `keras_nlp`, please install Tensorflow: `pip install tensorflow`. "
         "The TensorFlow package is required for data preprocessing with any backend."
     )
+import keras
 from absl import logging
+from keras import ops
 
 from keras_nlp.src.api_export import keras_nlp_export
-from keras_nlp.src.backend import ops
 from keras_nlp.src.models.bart.bart_preprocessor import BartPreprocessor
 from keras_nlp.src.utils.keras_utils import (
     convert_inputs_to_list_of_tensor_segments,
 )
-from keras_nlp.src.utils.keras_utils import pack_x_y_sample_weight
 
 
 @keras_nlp_export("keras_nlp.models.BartSeq2SeqLMPreprocessor")
@@ -170,7 +170,7 @@ class BartSeq2SeqLMPreprocessor(BartPreprocessor):
         # left (i.e., the next token).
         y = decoder_token_ids[..., 1:]
         sample_weight = decoder_padding_mask[..., 1:]
-        return pack_x_y_sample_weight(x, y, sample_weight)
+        return keras.utils.pack_x_y_sample_weight(x, y, sample_weight)
 
     def generate_preprocess(
         self,

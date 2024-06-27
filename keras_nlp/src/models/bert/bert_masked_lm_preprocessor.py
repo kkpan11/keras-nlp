@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import keras
 from absl import logging
 
 from keras_nlp.src.api_export import keras_nlp_export
@@ -19,7 +20,6 @@ from keras_nlp.src.layers.preprocessing.masked_lm_mask_generator import (
     MaskedLMMaskGenerator,
 )
 from keras_nlp.src.models.bert.bert_preprocessor import BertPreprocessor
-from keras_nlp.src.utils.keras_utils import pack_x_y_sample_weight
 
 
 @keras_nlp_export("keras_nlp.models.BertMaskedLMPreprocessor")
@@ -183,7 +183,7 @@ class BertMaskedLMPreprocessor(BertPreprocessor):
         }
         y = masker_outputs["mask_ids"]
         sample_weight = masker_outputs["mask_weights"]
-        return pack_x_y_sample_weight(x, y, sample_weight)
+        return keras.utils.pack_x_y_sample_weight(x, y, sample_weight)
 
     def get_config(self):
         config = super().get_config()

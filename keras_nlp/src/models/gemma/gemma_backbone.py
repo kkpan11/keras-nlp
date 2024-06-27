@@ -13,10 +13,10 @@
 # limitations under the License.
 
 
+import keras
+from keras import ops
+
 from keras_nlp.src.api_export import keras_nlp_export
-from keras_nlp.src.backend import config
-from keras_nlp.src.backend import keras
-from keras_nlp.src.backend import ops
 from keras_nlp.src.layers.modeling.reversible_embedding import (
     ReversibleEmbedding,
 )
@@ -54,6 +54,21 @@ class GemmaBackbone(Backbone):
         layer_norm_epsilon: float. The epsilon value user for every layer norm
             in the transformer model.
         dropout: float. Dropout probability for the Transformer encoder.
+        query_head_dim_normalize: boolean. Whether to normalize attention with
+            head dimension or hidden_dim/num_query_heads. Gemma2 uses the
+            second option. Defaults to True.
+        use_post_ffw_norm: boolean. Whether to normalize after the feedforward
+            block. Defaults to False.
+        use_post_attention_norm: boolean. Whether to normalize after the attention
+            block. Defaults to False.
+        attention_logit_soft_cap: None or int. Soft cap for the attention logits.
+            Defaults to None.
+        final_logit_soft_cap: None or int. Soft cap for the final logits.
+            Defaults to None.
+        use_sliding_window_attention boolean. Whether to use sliding local
+          window attention. Defaults to False.
+        sliding_window_size: int. Size of the sliding local window. Defaults to
+            4096.
         dtype: string or `keras.mixed_precision.DTypePolicy`. The dtype to use
             for the models computations and weights. Note that some
             computations, such as softmax and layer normalization will always
@@ -93,18 +108,18 @@ class GemmaBackbone(Backbone):
         hidden_dim,
         intermediate_dim,
         head_dim,
+        query_head_dim_normalize=True,
+        use_post_ffw_norm=False,
+        use_post_attention_norm=False,
+        attention_logit_soft_cap=None,
+        final_logit_soft_cap=None,
+        use_sliding_window_attention=False,
+        sliding_window_size=4096,
         layer_norm_epsilon=1e-6,
         dropout=0,
         dtype=None,
         **kwargs,
     ):
-        if not config.keras_3():
-            raise ValueError(
-                "`GemmaBackbone` requires Keras 3. Run `pip install -U keras` "
-                "upgrade your Keras version, or see https://keras.io/getting_started/ "
-                "for more info on Keras versions and installation."
-            )
-
         # === Layers ===
         self.token_embedding = ReversibleEmbedding(
             input_dim=vocabulary_size,
@@ -121,12 +136,19 @@ class GemmaBackbone(Backbone):
         )
         self.transformer_layers = []
         for i in range(num_layers):
+            sliding_window = use_sliding_window_attention and (i % 2 == 0)
             layer = GemmaDecoderBlock(
                 intermediate_dim=intermediate_dim,
                 hidden_dim=hidden_dim,
                 num_query_heads=num_query_heads,
                 head_dim=head_dim,
                 num_key_value_heads=num_key_value_heads,
+                query_head_dim_normalize=query_head_dim_normalize,
+                use_post_ffw_norm=use_post_ffw_norm,
+                use_post_attention_norm=use_post_attention_norm,
+                logit_soft_cap=attention_logit_soft_cap,
+                use_sliding_window_attention=sliding_window,
+                sliding_window_size=sliding_window_size,
                 dropout=dropout,
                 dtype=dtype,
                 name=f"decoder_block_{i}",
@@ -170,6 +192,13 @@ class GemmaBackbone(Backbone):
         self.head_dim = head_dim
         self.layer_norm_epsilon = layer_norm_epsilon
         self.dropout = dropout
+        self.query_head_dim_normalize = query_head_dim_normalize
+        self.use_post_ffw_norm = use_post_ffw_norm
+        self.use_post_attention_norm = use_post_attention_norm
+        self.attention_logit_soft_cap = attention_logit_soft_cap
+        self.final_logit_soft_cap = final_logit_soft_cap
+        self.sliding_window_size = sliding_window_size
+        self.use_sliding_window_attention = use_sliding_window_attention
 
     def get_config(self):
         config = super().get_config()
@@ -184,6 +213,13 @@ class GemmaBackbone(Backbone):
                 "head_dim": self.head_dim,
                 "layer_norm_epsilon": self.layer_norm_epsilon,
                 "dropout": self.dropout,
+                "query_head_dim_normalize": self.query_head_dim_normalize,
+                "use_post_ffw_norm": self.use_post_ffw_norm,
+                "use_post_attention_norm": self.use_post_attention_norm,
+                "final_logit_soft_cap": self.final_logit_soft_cap,
+                "attention_logit_soft_cap": self.attention_logit_soft_cap,
+                "sliding_window_size": self.sliding_window_size,
+                "use_sliding_window_attention": self.use_sliding_window_attention,
             }
         )
         return config
@@ -262,17 +298,18 @@ class GemmaBackbone(Backbone):
         # See https://arxiv.org/abs/2403.08295
         layout_map = keras.distribution.LayoutMap(device_mesh)
         layout_map["token_embedding/embeddings"] = (model_dim, data_dim)
-        layout_map["decoder_block.*attention.*(query|key|value).*kernel"] = (
+        layout_map["decoder_block.*attention.*(query|key|value).kernel"] = (
             model_dim,
             data_dim,
             None,
         )
-        layout_map["decoder_block.*attention_output.*kernel"] = (
+        layout_map["decoder_block.*attention_output.kernel"] = (
             model_dim,
             None,
             data_dim,
         )
-        layout_map["decoder_block.*ffw_gating.*kernel"] = (data_dim, model_dim)
-        layout_map["decoder_block.*ffw_linear.*kernel"] = (model_dim, data_dim)
+        layout_map["decoder_block.*ffw_gating.kernel"] = (data_dim, model_dim)
+        layout_map["decoder_block.*ffw_gating_2.kernel"] = (data_dim, model_dim)
+        layout_map["decoder_block.*ffw_linear.kernel"] = (model_dim, data_dim)
 
         return layout_map

@@ -13,9 +13,10 @@
 # limitations under the License.
 
 
+import keras
+from keras import ops
+
 from keras_nlp.src.api_export import keras_nlp_export
-from keras_nlp.src.backend import keras
-from keras_nlp.src.backend import ops
 from keras_nlp.src.models.causal_lm import CausalLM
 from keras_nlp.src.models.gemma.gemma_backbone import GemmaBackbone
 from keras_nlp.src.models.gemma.gemma_causal_lm_preprocessor import (
@@ -222,9 +223,17 @@ class GemmaCausalLM(CausalLM):
                 cache_update_index=cache_update_index,
             )
             caches.append(next_cache)
+
         cache = ops.stack(caches, axis=1)
         hidden_states = x = self.backbone.layer_norm(x)
         logits = self.backbone.token_embedding(x, reverse=True)
+
+        if self.backbone.final_logit_soft_cap is not None:
+            logits = ops.divide(logits, self.backbone.final_logit_soft_cap)
+            logits = ops.multiply(
+                ops.tanh(logits), self.backbone.final_logit_soft_cap
+            )
+
         return logits, hidden_states, cache
 
     def _build_cache(self, token_ids):

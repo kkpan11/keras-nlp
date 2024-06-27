@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import keras
 from absl import logging
 
 from keras_nlp.src.api_export import keras_nlp_export
@@ -21,7 +22,6 @@ from keras_nlp.src.layers.preprocessing.masked_lm_mask_generator import (
 from keras_nlp.src.models.deberta_v3.deberta_v3_preprocessor import (
     DebertaV3Preprocessor,
 )
-from keras_nlp.src.utils.keras_utils import pack_x_y_sample_weight
 
 
 @keras_nlp_export("keras_nlp.models.DebertaV3MaskedLMPreprocessor")
@@ -188,4 +188,4 @@ class DebertaV3MaskedLMPreprocessor(DebertaV3Preprocessor):
         }
         y = masker_outputs["mask_ids"]
         sample_weight = masker_outputs["mask_weights"]
-        return pack_x_y_sample_weight(x, y, sample_weight)
+        return keras.utils.pack_x_y_sample_weight(x, y, sample_weight)
